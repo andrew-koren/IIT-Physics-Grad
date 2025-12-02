@@ -2,6 +2,7 @@ import numpy as np
 from scipy.special import jv, jn_zeros
 from scipy.integrate import simpson
 from scipy.interpolate import CubicSpline
+from scipy.ndimage import map_coordinates
 import matplotlib.pyplot as plt
 from dataclasses import dataclass
 
@@ -99,7 +100,7 @@ class DHT:
     q:      int            # order of bessel functions
     N:      int            # radial resolution
     k:      np.ndarray     # length N (first N zeros)
-    kp1:   float          # (N+1)-th zero
+    kp1:    float          # (N+1)-th zero
     rq:     np.ndarray     # pseudospectral grid r_{q,i} = k_i / k_{N+1}
     w:      np.ndarray     # quadrature weights w_{q,i}
     M:      np.ndarray     # DHT matrix (NxN)
@@ -130,7 +131,7 @@ def make_DHT(order, N):
 
     return DHT(q = order, N = N, k = k, kp1 = kp1,  rq = rq, w = w, M = M)
 
-class FourierBesselTransform:
+class Double_Transform:
     def __init__(self, Nr, Nth):
         """
         Nr (N): Number of Bessel modes.
@@ -157,7 +158,6 @@ class FourierBesselTransform:
     def phys_to_spec(self, f_data):
         """
         Forward Transform: Physical(r, theta) -> Spectral(q, j)
-        Method: FFT -> Cubic Spline -> DHT (Section 2.2)
         """
         # FFT along theta axis
         f_hat_r = np.fft.fft(f_data, axis=0)
@@ -185,7 +185,6 @@ class FourierBesselTransform:
     def spec_to_phys(self, a_nm):
         """
         Backward Transform: Spectral(q, j) -> Physical(r, theta)
-        Method: Inverse DHT -> Cardinal Interpolation -> Inverse FFT (Section 2.2)
         """
         # rebuild k-space from transform
         f_hat_r = np.zeros((self.Nth, len(self.r_uniform)), dtype=complex)
@@ -203,3 +202,95 @@ class FourierBesselTransform:
         f_data = np.fft.ifft(f_hat_r, axis=0)
         
         return f_data
+    
+# got some help from gemini 3 for interpolation
+def sample_image_on_polar_grid(img_arr, Double_Transform):
+    """
+    Maps a cartesian image onto the solver's (N_theta, 2*N_radial) grid.
+    """
+    h, w = img_arr.shape
+    cy, cx = h / 2, w / 2
+    max_radius_pix = min(h, w) / 2
+
+    # Transform grid
+    R_grid = Double_Transform.R
+    TH_grid = Double_Transform.TH
+
+    # Get points from image via cubic spline interpolation, same as FFT step in paper
+    X_polar = R_grid * np.cos(TH_grid) * max_radius_pix + cx
+    Y_polar = R_grid * np.sin(TH_grid) * max_radius_pix + cy
+    coords = np.vstack((Y_polar.flatten(), X_polar.flatten()))
+
+    sampled_flat = map_coordinates(img_arr, coords, order=3, mode='constant', cval=0.0)  # cval = 0 when sampling outside the image
+    sampled_polar = sampled_flat.reshape(R_grid.shape)
+    sampled_polar[R_grid > 1.0] = 0 # just to be sure
+    
+    return sampled_polar
+
+def spectrum_plot(ax, FFT_DHT, a_nm, phase = False):
+    # Shift coefficients so q=0 is in the center of the x-axis
+    coeffs_shifted = np.fft.fftshift(a_nm, axes=0)
+    extent = [-FFT_DHT.Nth//2, FFT_DHT.Nth//2, FFT_DHT.Nr, 0] 
+
+
+    if phase:
+        # Plot Phase
+        spec_phase = np.angle(coeffs_shifted)
+        im = ax.imshow(spec_phase.T, cmap='twilight', aspect='auto', 
+                       extent=extent, vmin=-np.pi, vmax=np.pi)
+        ax.set_title("Spectrum Phase (rad)")
+        ax.set_xlabel("Azimuthal Mode (q)")
+        ax.set_yticks([]) # Hide y-axis as it's usually aligned with the magnitude plot
+    else:
+        # Plot Magnitude
+        spec_mag = np.log1p(np.abs(coeffs_shifted))
+        vmax = np.percentile(spec_mag, 99.5) 
+        im = ax.imshow(spec_mag.T, cmap='inferno', aspect='auto', 
+                       extent=extent, vmax=vmax)
+        ax.set_title(r"Spectrum Amplitude $\log(1+|F|)$")
+        ax.set_xlabel("Azimuthal Mode (q)")
+        ax.set_ylabel("Radial Mode (j)")
+
+    # Unified colorbar call
+    plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
+def image_visualization(FFT_DHT, img_arr):
+    polar_image = sample_image_on_polar_grid(img_arr, FFT_DHT)
+    coeffs = FFT_DHT.phys_to_spec(polar_image)
+    reconstructed_polar = FFT_DHT.spec_to_phys(coeffs) # in polar coordinates (r, theta)
+
+    fig, ax = plt.subplots(2, 3, figsize=(18, 10))
+
+    ax[0, 0].imshow(img_arr, cmap='gray')
+    ax[0, 0].set_title("Original Image (Cartesian)")
+    ax[0, 0].axis('off')
+
+    ax[1,0].imshow(polar_image.T, cmap='gray', aspect='auto')
+    ax[1,0].set_ylabel('Radius (j)')
+    ax[1,0].set_xlabel('Theta (q)')
+    ax[1,0].set_title("Unwrapped Input (Polar Domain)")
+
+    ax[0, 2].imshow(reconstructed_polar.real.T, cmap='gray', aspect='auto')
+    ax[0, 2].set_title("Unwrapped Reconstruction")
+    ax[0, 2].set_xlabel('Theta (q)')
+
+
+    spectrum_plot(ax[0, 1], FFT_DHT, coeffs, phase=False)
+    spectrum_plot(ax[1, 1], FFT_DHT, coeffs, phase=True)
+
+    ax[1, 2].remove() # need to make polar projection
+    ax[1, 2] = fig.add_subplot(2, 3, 6, projection='polar')
+
+    r_grid = FFT_DHT.r_uniform
+    th_grid = FFT_DHT.th_uniform
+    R_mesh, TH_mesh = np.meshgrid(r_grid, th_grid)
+
+    # Plot
+    ax[1, 2].pcolormesh(TH_mesh, R_mesh, reconstructed_polar.real, cmap='gray', shading='auto')
+    ax[1, 2].set_theta_direction(-1)
+    ax[1, 2].set_theta_zero_location("E")
+    ax[1, 2].set_title("Reconstruction Projected")
+    ax[1, 2].set_axis_off()
+
+    plt.tight_layout()
+    plt.show()
