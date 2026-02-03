@@ -13,33 +13,41 @@ def split_scalar_operator(term):
 
     return sp.simplify(coeff), op_prod
 
-def canonical_commute(op_prod, commuting_pairs):
+def canonical_commute(op_prod, commuting_pairs = None, anticommuting_pairs = None):
     if op_prod is sp.S.One:
-        return op_prod
+        return op_prod, 1
 
     ops = list(sp.Mul.make_args(op_prod))
-
+    sign = 1
     changed = True
     while changed:
         changed = False
         for i in range(len(ops) - 1):
             a, b = ops[i], ops[i+1]
-            if frozenset([a, b]) in commuting_pairs:
-                if sp.default_sort_key(a) > sp.default_sort_key(b): # the ordering that is auto-picked
-                    ops[i], ops[i+1] = b, a
-                    changed = True
-    return sp.Mul(*ops)
+            key = frozenset([a, b])
+            if commuting_pairs and key in commuting_pairs:
+                    if sp.default_sort_key(a) > sp.default_sort_key(b): # the ordering that is auto-picked
+                        ops[i], ops[i+1] = b, a
+                        changed = True
+            elif anticommuting_pairs and key in anticommuting_pairs:
+                    if sp.default_sort_key(a) > sp.default_sort_key(b): # the ordering that is auto-picked
+                        ops[i], ops[i+1] = b, a
+                        sign *= -1
+                        changed = True
+    return sp.Mul(*ops), sign
     
 
-def collect_operators(expr, collect_coeffs = False, commuting_pairs = None):
+def collect_operators(expr, collect_coeffs = False, commuting_pairs = None, anticommuting_pairs = None):
     expr = sp.expand(expr)
     terms = sp.Add.make_args(expr)
     collected = {}
 
     for t in terms:
+        sign = 1
         coeff, op = split_scalar_operator(t)
-        op = canonical_commute(op, commuting_pairs) if commuting_pairs else op
-        collected[op] = collected.get(op, 0) + coeff
+        if commuting_pairs or anticommuting_pairs:
+            op, sign = canonical_commute(op, commuting_pairs, anticommuting_pairs)
+        collected[op] = collected.get(op, 0) + (coeff * sign)
     if not collect_coeffs:
         return collected
 
