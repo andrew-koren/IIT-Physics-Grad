@@ -1,0 +1,84 @@
+# step 3: rotation to start at the center of the quad
+# to avoid fiddling with the input distribution
+
+# added "profile" command to save Twiss parameters (approximate)
+
+# specify key parameters
+param Pref=10e3 # 10 GeV/c protons
+param clight=299792458 # m/s
+param Brho=(1/$clight)*1e9*$Pref/1e3 # 3.3356*p[GeV/c]
+param klf=0.15
+param kld=0.15
+param degrad=pi/180
+param lq=1
+param len_corr=0.8
+param ld=2*$len_corr # split dipole into four + length correction
+# to avoid overlaps
+
+param circum=200e3
+param radius=$circum/(2*pi)
+param n=20
+param lcell=$circum/$n
+param angle=360/$n
+
+# select physics list, this one is a good place to start
+physics QGSP_BERT
+
+# the beam is nominally headed in the +Z direction
+# we start with a pencil beam  with some energy spread
+beam gaussian particle=proton nEvents=1000 beamX=$radius beamZ=0.0 \
+    sigmaX=0.0 sigmaY=0.0 sigmaXp=0.02 sigmaYp=0.02 \
+    meanMomentum=$Pref sigmaP=0.0 meanT=0.0 sigmaT=0.0
+
+# a reference particle
+reference particle=proton referenceMomentum=$Pref beamX=$radius
+
+particlecolor reference=1,1,1
+
+# focusing quad
+genericquad qf fieldLength=1e3*$lq ironLength=1e3*$lq ironRadius=1000 \
+            apertureRadius=500 \
+            gradient=$klf*$Brho/$lq ironMaterial=Fe fieldMaterial=Air \
+            ironColor=1,0,0,0.5 fringe=0 openAperture=1 kill=1
+
+genericquad qd fieldLength=1e3*$lq ironLength=1e3*$lq ironRadius=1000 \
+            apertureRadius=500 \
+            gradient=-$kld*$Brho/$lq ironMaterial=Fe fieldMaterial=Air \
+            ironColor=0,0,1,0.5 fringe=0 openAperture=1 kill=1
+
+# note that By=(2*pi/$n/4)... since we have four shorter dipoles
+genericbend dipole fieldWidth=1e3 fieldHeight=0.5e3 fieldLength=1e3*$ld \
+            ironWidth=2e3 ironHeight=1e3 ironLength=1e3*$ld \
+            By=(2*pi/$n/4)*$Brho/$ld fieldMaterial=Fe fieldMaterial=Air \
+            ironColor=0,1,0,0.5 fringe=0 openAperture=1 kill=1
+
+do i 1 $n
+  place dipole z=$radius*sin($angle*($i-0.8)*$degrad) \
+               x=$radius*cos($angle*($i-0.8)*$degrad) \
+               rotation=Y(-$angle*($i-0.8))
+  place dipole z=$radius*sin($angle*($i-0.6)*$degrad) \
+               x=$radius*(cos($angle*($i-0.6)*$degrad)) \
+               rotation=Y(-$angle*($i-0.6))
+  place dipole z=$radius*sin($angle*($i-0.4)*$degrad) \
+               x=$radius*(cos($angle*($i-0.4)*$degrad)) \
+               rotation=Y(-$angle*($i-0.4))
+  place dipole z=$radius*sin($angle*($i-0.2)*$degrad) \
+               x=$radius*(cos($angle*($i-0.2)*$degrad)) \
+               rotation=Y(-$angle*($i-0.2))
+#  cornerarc z=0 angle=-$angle centerRadius=$radius
+enddo
+
+do i 1 $n 2
+  place qf z=$radius*sin($angle*($i-1)*$degrad) \
+           x=$radius*(cos($angle*($i-1)*$degrad)) \
+           rotation=Y(-$angle*($i-1))
+  place qd z=$radius*sin($angle*($i)*$degrad) \
+           x=$radius*(cos($angle*($i)*$degrad)) \
+           rotation=Y(-$angle*($i))
+enddo
+
+param nturns=1
+particlefilter nturns radius=499 length=1 color=0,0,1 kill=proton nWait=$nturns referenceWait=1
+place nturns z=0 x=$radius
+
+profile zloop=0:$circum:($lcell/2) particle=proton file=profile.dat coordinates=reference
