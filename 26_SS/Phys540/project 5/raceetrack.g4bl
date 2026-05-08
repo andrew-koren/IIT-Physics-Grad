@@ -1,0 +1,297 @@
+physics QGSP_BERT
+trace nTrace=10 format=ascii coordinates=reference
+
+# match with bmad
+
+param Pref=10000.0         # reference momentum [MeV/c] = 10 GeV/c
+param clight=299792458.0   # [m/s]
+param Brho=1.0/$clight*1e9*$Pref/1e3
+
+# FODO CELL
+
+param Lq=500        # half-quadrupole length [mm]
+param Ld=1000       # short drift [mm]
+param Lb=8000       # dipole / long-drift body length [mm]
+param Lcell=22000   # full FODO period [mm]
+
+# locators
+
+param oQFh1=250    # center of first  half-QF
+param oB1=5500   # center of first  dipole
+param oQDh1=10750  # center of first  half-QD
+param oQDh2=11250  # center of second half-QD
+param oB2=16500  # center of second dipole
+param oQFh2=21750  # center of second half-QF
+
+# quad gradients
+
+param gF_S=$Brho*0.132659377647527    # QF STRAIGHT  +focus
+param gD_S=$Brho*0.132659377647527    # QD STRAIGHT  (magnitude)
+param gF_DS=$Brho*0.131089874393989    # QF DS1 & DS2 +focus
+param gD_DS=$Brho*0.132376207015015    # QD DS1 & DS2 (magnitude)
+param gF_RT=$Brho*0.126303966005202    # QF RACETRACK +focus
+param gD_RT=$Brho*0.131495444118192    # QD RACETRACK (magnitude)
+
+# supression dipole
+param G_sup=0.01402497
+param rho_sup=1e3/$G_sup               # bending radius [mm]
+param By_sup=$Brho*$G_sup              # By [T]
+param ang_sup=180/pi*$G_sup*$Lb/1e3   # bend angle [deg], Lb in mm → /1e3 m
+
+# rt_dipole
+param G_rt=0.02804993
+param rho_rt=1e3/$G_rt
+param By_rt=$Brho*$G_rt
+param ang_rt=180/pi*$G_rt*$Lb/1e3
+
+# beam
+param nEvents=2000
+
+start z=0 x=0 initialZ=0 radiusCut=1000 ring=1
+
+beam gaussian particle=proton nEvents=$nEvents beamX=0 beamZ=0.0 \
+    sigmaX=1 sigmaY=1 sigmaXp=0.005 sigmaYp=0.005 \
+    meanMomentum=$Pref sigmaP=0.0 meanT=0.0 sigmaT=0.0
+
+reference particle=proton referenceMomentum=$Pref beamX=0
+particlecolor reference=1,1,1
+
+
+# --- Quadrupoles ---
+
+genericquad qfs fieldLength=$Lq ironLength=$Lq \
+    apertureRadius=120 ironRadius=250 \
+    gradient=$gF_S ironMaterial=Fe fieldMaterial=Vacuum \
+    ironColor=1,0,0,0.5 fringe=0 openAperture=1 kill=1
+
+genericquad qds fieldLength=$Lq ironLength=$Lq \
+    apertureRadius=120 ironRadius=250 \
+    gradient=-$gD_S ironMaterial=Fe fieldMaterial=Vacuum \
+    ironColor=0,0,1,0.5 fringe=0 openAperture=1 kill=1
+
+genericquad qfds fieldLength=$Lq ironLength=$Lq \
+    apertureRadius=120 ironRadius=250 \
+    gradient=$gF_DS ironMaterial=Fe fieldMaterial=Vacuum \
+    ironColor=1,0.5,0,0.5 fringe=0 openAperture=1 kill=1
+
+genericquad qdds fieldLength=$Lq ironLength=$Lq \
+    apertureRadius=120 ironRadius=250 \
+    gradient=-$gD_DS ironMaterial=Fe fieldMaterial=Vacuum \
+    ironColor=0,0.5,1,0.5 fringe=0 openAperture=1 kill=1
+
+genericquad qfrt fieldLength=$Lq ironLength=$Lq \
+    apertureRadius=120 ironRadius=250 \
+    gradient=$gF_RT ironMaterial=Fe fieldMaterial=Vacuum \
+    ironColor=1,1,0,0.5 fringe=0 openAperture=1 kill=1
+
+genericquad qdrt fieldLength=$Lq ironLength=$Lq \
+    apertureRadius=120 ironRadius=250 \
+    gradient=-$gD_RT ironMaterial=Fe fieldMaterial=Vacuum \
+    ironColor=0,1,1,0.5 fringe=0 openAperture=1 kill=1
+
+# --- Dipoles ---
+
+idealsectorbend bsup angle=-$ang_sup By=$By_sup \
+    fieldCenterRadius=$rho_sup \
+    fieldInnerRadius=$rho_sup-600 fieldOuterRadius=$rho_sup+600 \
+    fieldHeight=400 \
+    ironInnerRadius=$rho_sup-900 ironOuterRadius=$rho_sup+900 \
+    ironHeight=600 ironMaterial=Fe fieldMaterial=Vacuum \
+    ironColor=0,0.8,0.2,0.5 openAperture=1 kill=1
+
+idealsectorbend brt angle=-$ang_rt By=$By_rt \
+    fieldCenterRadius=$rho_rt \
+    fieldInnerRadius=$rho_rt-600 fieldOuterRadius=$rho_rt+600 \
+    fieldHeight=400 \
+    ironInnerRadius=$rho_rt-900 ironOuterRadius=$rho_rt+900 \
+    ironHeight=600 ironMaterial=Fe fieldMaterial=Vacuum \
+    ironColor=0,0.4,0,0.5 openAperture=1 kill=1
+
+# --- Marker detector
+
+virtualdetector mkr radius=200 length=1 \
+    color=0,1,1,0.3 format=ascii file=markers
+
+
+# straight 1  (s = 0 ... 132 000 mm)
+param ss1=0   # section start
+
+do i 1 6
+  param sc=$ss1+($i-1)*$Lcell   # cell start (= left edge of first half-QF)
+  place qfs z=$sc+$oQFh1
+  place mkr z=$sc+$oQFh1
+  place qds z=$sc+$oQDh1
+  place qds z=$sc+$oQDh2
+  place mkr z=$sc+$oQDh1        # marker at QD centre
+  place qfs z=$sc+$oQFh2
+enddo
+
+# arc 1  (s = 132 000 ... 374 000 mm)
+param sa1=132000  # arc 1 start = 6*Lcell
+
+param sc=$sa1
+place qfds z=$sc+$oQFh1
+place mkr  z=$sc+$oQFh1
+place bsup z=$sc+$oB1
+cornerarc   z=$sc+$oB1  angle=-$ang_sup  centerRadius=$rho_sup  radiusCut=1200
+place qdds z=$sc+$oQDh1
+place qdds z=$sc+$oQDh2
+place mkr  z=$sc+$oQDh1
+place bsup z=$sc+$oB2
+cornerarc   z=$sc+$oB2  angle=-$ang_sup  centerRadius=$rho_sup  radiusCut=1200
+place qfds z=$sc+$oQFh2
+
+# QF boundary: DS2 end qfds, DS1 start qfds
+param sc=$sa1+$Lcell
+place qfds z=$sc+$oQFh1
+place mkr  z=$sc+$oQFh1
+place bsup z=$sc+$oB1
+cornerarc   z=$sc+$oB1  angle=-$ang_sup  centerRadius=$rho_sup  radiusCut=1200
+place qdds z=$sc+$oQDh1
+place qdds z=$sc+$oQDh2
+place mkr  z=$sc+$oQDh1
+place bsup z=$sc+$oB2
+cornerarc   z=$sc+$oB2  angle=-$ang_sup  centerRadius=$rho_sup  radiusCut=1200
+
+place qfds z=$sc+$oQFh2   # DS1 half
+
+# cells 3–9 of arc 1, s = 176 000 ... 330 000
+do i 1 7
+  param sc=$sa1+($i+1)*$Lcell   # cells 3–9  (i=1→cell3, i=7→cell9)
+  # First half-QF: for i=1 the left half is qfds (placed above),
+  #                right half (= this) is qfrt.
+  place qfrt z=$sc+$oQFh1
+  place mkr  z=$sc+$oQFh1
+  place brt  z=$sc+$oB1
+  cornerarc   z=$sc+$oB1  angle=-$ang_rt  centerRadius=$rho_rt  radiusCut=1200
+  place qdrt z=$sc+$oQDh1
+  place qdrt z=$sc+$oQDh2
+  place mkr  z=$sc+$oQDh1
+  place brt  z=$sc+$oB2
+  cornerarc   z=$sc+$oB2  angle=-$ang_rt  centerRadius=$rho_rt  radiusCut=1200
+  place qfrt z=$sc+$oQFh2
+enddo
+
+# DS1_out cell  (cell 10, s = 330 000 ... 352 000) 
+# QF boundary: RT end = qfrt (placed in loop), DS1_out start = qfds
+param sc=$sa1+9*$Lcell
+place qfds z=$sc+$oQFh1
+place mkr  z=$sc+$oQFh1
+place bsup z=$sc+$oB1
+cornerarc   z=$sc+$oB1  angle=-$ang_sup  centerRadius=$rho_sup  radiusCut=1200
+place qdds z=$sc+$oQDh1
+place qdds z=$sc+$oQDh2
+place mkr  z=$sc+$oQDh1
+place bsup z=$sc+$oB2
+cornerarc   z=$sc+$oB2  angle=-$ang_sup  centerRadius=$rho_sup  radiusCut=1200
+place qfds z=$sc+$oQFh2
+
+# DS2_out cell  (cell 11, s = 352 000 ... 374 000)
+param sc=$sa1+10*$Lcell
+place qfds z=$sc+$oQFh1
+place mkr  z=$sc+$oQFh1
+place bsup z=$sc+$oB1
+cornerarc   z=$sc+$oB1  angle=-$ang_sup  centerRadius=$rho_sup  radiusCut=1200
+place qdds z=$sc+$oQDh1
+place qdds z=$sc+$oQDh2
+place mkr  z=$sc+$oQDh1
+place bsup z=$sc+$oB2
+cornerarc   z=$sc+$oB2  angle=-$ang_sup  centerRadius=$rho_sup  radiusCut=1200
+# QF boundary: DS2_out end = qfds, Straight-2 start = qfs
+place qfds z=$sc+$oQFh2   # arc-2 side of transition
+
+# straight 2  (s = 374 000 ... 506 000 mm)
+param ss2=374000   # = sa1 + 11*Lcell
+
+do i 1 6
+  param sc=$ss2+($i-1)*$Lcell
+  # For i=1: the left half-QF was qfds (placed above); place qfs for the right half
+  place qfs z=$sc+$oQFh1
+  place mkr z=$sc+$oQFh1
+  place qds z=$sc+$oQDh1
+  place qds z=$sc+$oQDh2
+  place mkr z=$sc+$oQDh1
+  place qfs z=$sc+$oQFh2
+enddo
+
+# arc 2  (s = 506 000 ... 748 000 mm)
+# Identical optics structure to Arc 1.
+param sa2=506000   # = ss2 + 6*Lcell
+
+# DS2_in cell
+param sc=$sa2
+place qfds z=$sc+$oQFh1
+place mkr  z=$sc+$oQFh1
+place bsup z=$sc+$oB1
+cornerarc   z=$sc+$oB1  angle=-$ang_sup  centerRadius=$rho_sup  radiusCut=1200
+place qdds z=$sc+$oQDh1
+place qdds z=$sc+$oQDh2
+place mkr  z=$sc+$oQDh1
+place bsup z=$sc+$oB2
+cornerarc   z=$sc+$oB2  angle=-$ang_sup  centerRadius=$rho_sup  radiusCut=1200
+place qfds z=$sc+$oQFh2
+
+# DS1_in cell
+param sc=$sa2+$Lcell
+place qfds z=$sc+$oQFh1
+place mkr  z=$sc+$oQFh1
+place bsup z=$sc+$oB1
+cornerarc   z=$sc+$oB1  angle=-$ang_sup  centerRadius=$rho_sup  radiusCut=1200
+place qdds z=$sc+$oQDh1
+place qdds z=$sc+$oQDh2
+place mkr  z=$sc+$oQDh1
+place bsup z=$sc+$oB2
+cornerarc   z=$sc+$oB2  angle=-$ang_sup  centerRadius=$rho_sup  radiusCut=1200
+place qfds z=$sc+$oQFh2   # DS1 half
+
+# 7 bend cells 
+do i 1 7
+  param sc=$sa2+($i+1)*$Lcell
+  place qfrt z=$sc+$oQFh1
+  place mkr  z=$sc+$oQFh1
+  place brt  z=$sc+$oB1
+  cornerarc   z=$sc+$oB1  angle=-$ang_rt  centerRadius=$rho_rt  radiusCut=1200
+  place qdrt z=$sc+$oQDh1
+  place qdrt z=$sc+$oQDh2
+  place mkr  z=$sc+$oQDh1
+  place brt  z=$sc+$oB2
+  cornerarc   z=$sc+$oB2  angle=-$ang_rt  centerRadius=$rho_rt  radiusCut=1200
+  place qfrt z=$sc+$oQFh2
+enddo
+
+#  DS1_out cell 
+param sc=$sa2+9*$Lcell
+place qfds z=$sc+$oQFh1
+place mkr  z=$sc+$oQFh1
+place bsup z=$sc+$oB1
+cornerarc   z=$sc+$oB1  angle=-$ang_sup  centerRadius=$rho_sup  radiusCut=1200
+place qdds z=$sc+$oQDh1
+place qdds z=$sc+$oQDh2
+place mkr  z=$sc+$oQDh1
+place bsup z=$sc+$oB2
+cornerarc   z=$sc+$oB2  angle=-$ang_sup  centerRadius=$rho_sup  radiusCut=1200
+place qfds z=$sc+$oQFh2
+
+#  DS2_out cell 
+param sc=$sa2+10*$Lcell
+place qfds z=$sc+$oQFh1
+place mkr  z=$sc+$oQFh1
+place bsup z=$sc+$oB1
+cornerarc   z=$sc+$oB1  angle=-$ang_sup  centerRadius=$rho_sup  radiusCut=1200
+place qdds z=$sc+$oQDh1
+place qdds z=$sc+$oQDh2
+place mkr  z=$sc+$oQDh1
+place bsup z=$sc+$oB2
+cornerarc   z=$sc+$oB2  angle=-$ang_sup  centerRadius=$rho_sup  radiusCut=1200
+
+place qfds z=$sc+$oQFh2   # final half-QF (arc side)
+
+# TWISS 
+
+param Ctot=748000   # total circumference [mm]
+param dz_prof=500   # sample every 500 mm (= 0.5 m)
+
+profile zloop=0:$Ctot:$dz_prof \
+    particle=proton \
+    file=profile.dat \
+    coordinates=centerline
