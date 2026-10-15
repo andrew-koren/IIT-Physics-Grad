@@ -7291,41 +7291,53 @@ a.anchor-link {
   }
 }
 </style>
-<!-- Load mathjax -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/latest.js?config=TeX-AMS_CHTML-full,Safe"> </script>
-<!-- MathJax configuration -->
-<script type="text/x-mathjax-config">
-    init_mathjax = function() {
-        if (window.MathJax) {
-        // MathJax loaded
-            MathJax.Hub.Config({
-                TeX: {
-                    equationNumbers: {
-                    autoNumber: "AMS",
-                    useLabelIds: true
-                    }
-                },
-                tex2jax: {
-                    inlineMath: [ ['$','$'], ["\\(","\\)"] ],
-                    displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
-                    processEscapes: true,
-                    processEnvironments: true
-                },
-                displayAlign: 'center',
-                messageStyle: 'none',
-                CommonHTML: {
-                    linebreaks: {
-                    automatic: true
-                    }
-                }
-            });
+<!-- 1. Load KaTeX CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 
-            MathJax.Hub.Queue(["Typeset", MathJax.Hub]);
-        }
+<script>
+    // 2. TEMPORARY HACK: Hide 'define' so KaTeX doesn't get confused by RequireJS
+    if (window.define) {
+        window.__define_backup = window.define;
+        window.define = undefined;
     }
-    init_mathjax();
-    </script>
-<!-- End of mathjax configuration --><script type="module">
+</script>
+
+<!-- 3. Load KaTeX JS (No integrity attributes to avoid blocking) -->
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+
+<script>
+    // 4. Restore 'define' immediately
+    if (window.__define_backup) {
+        window.define = window.__define_backup;
+        window.__define_backup = undefined;
+    }
+
+    // 5. Configure and Run (Wait for page load!)
+    document.addEventListener("DOMContentLoaded", function() {
+        if (window.renderMathInElement) {
+            renderMathInElement(document.body, {
+                // Tell KaTeX to look for $...$ and $$...$$
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false},
+                    {left: '\\(', right: '\\)', display: false},
+                    {left: '\\[', right: '\\]', display: true}
+                ],
+                // Essential for \def to work
+                trust: true,
+                // Essential for macros to share across blocks
+                globalGroup: true,
+                // Log errors to console instead of crashing
+                throwOnError: false,
+                strict: false
+            });
+        } else {
+            console.error("KaTeX failed to load.");
+        }
+    });
+</script>
+<script type="module">
   document.addEventListener("DOMContentLoaded", async () => {
     const diagrams = document.querySelectorAll(".jp-Mermaid > pre.mermaid");
     // do not load mermaidjs if not needed
